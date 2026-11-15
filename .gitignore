@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Generated simulation data and figures (kept out of git; see README)
+/outputs/
+*.zarr/
+*.nc
+*.h5
+
+# CasADi code-generation leftovers
+jit_tmp*
+*.c.o
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
