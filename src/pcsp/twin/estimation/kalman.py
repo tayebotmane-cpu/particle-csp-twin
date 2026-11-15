@@ -89,7 +89,12 @@ class KalmanFilter:
         self._x = x
         self._P = self.A @ self._P @ self.A.T + self.Q
 
-    def update(self, y: np.ndarray) -> None:
+    def update(
+        self, y: np.ndarray, u: np.ndarray | None = None, d: np.ndarray | None = None
+    ) -> None:
+        """Assimilate ``y``. ``u`` and ``d`` are accepted for the
+        :class:`~pcsp.core.interfaces.Estimator` protocol and ignored, because
+        the linear measurement ``y = C x`` does not depend on them."""
         self._x, self._P, self.innovation, self.innovation_cov = kalman_update(
             self._x, self._P, np.asarray(y, dtype=float), self.C @ self._x, self.C, self.R
         )

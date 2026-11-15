@@ -83,13 +83,22 @@ class Estimator(Protocol):
     """Recursive state estimator running at a fixed sample period.
 
     One cycle is ``predict(u, d)`` (advance the estimate by one sample period
-    under the inputs that were applied) followed by ``update(y)`` (assimilate
-    the measurement taken at the end of that period).
+    under the inputs that were applied) followed by ``update(y, u, d)``
+    (assimilate the measurement taken at the end of that period).
+
+    The measurement map is ``y = h(x, u, d)``, so ``update`` also takes the
+    input and disturbance that were in effect when ``y`` was taken. They may be
+    omitted after a ``predict``, in which case that call's ``u`` and ``d`` are
+    reused. They must be given when ``update`` is the first call - a loop that
+    assimilates the measurement at ``t = 0`` before any prediction - unless the
+    estimator's measurement map does not depend on them.
     """
 
     def predict(self, u: np.ndarray, d: np.ndarray) -> None: ...
 
-    def update(self, y: np.ndarray) -> None: ...
+    def update(
+        self, y: np.ndarray, u: np.ndarray | None = None, d: np.ndarray | None = None
+    ) -> None: ...
 
     @property
     def x_hat(self) -> np.ndarray:
