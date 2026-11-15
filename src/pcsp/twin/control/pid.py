@@ -10,7 +10,10 @@ Control law (parallel form), evaluated once per sample period ``h`` [s]:
 
     D_k &= \\frac{T_f}{T_f + h} D_{k-1} - s\\,\\frac{K_d}{T_f + h}\\,(y_k - y_{k-1})
 
-    v_k &= u_\\text{bias} + P_k + I_k + D_k + u_\\text{ff}(d_k)
+    F_k &= \\operatorname{clip}\\big(u_\\text{ff}(d_k),\\;
+           F_{k-1} - \\rho h,\\; F_{k-1} + \\rho h\\big), \\qquad F_{-1} = 0
+
+    v_k &= u_\\text{bias} + P_k + I_k + D_k + F_k
 
     u_k &= \\operatorname{clip}\\big(v_k,\\;
            \\max(u_\\min, u_{k-1} - \\rho h),\\; \\min(u_\\max, u_{k-1} + \\rho h)\\big)
@@ -29,6 +32,10 @@ Control law (parallel form), evaluated once per sample period ``h`` [s]:
   the rate limit, the integrator stops winding up under either. With
   ``T_t = h`` the integrator is reset in one sample so that the next unlimited
   output equals the applied one.
+* The feedforward term ``F_k`` follows ``u_ff(d_k)`` no faster than the slew
+  rate. A feedforward step larger than one slew step would otherwise saturate
+  the rate limit, and back-calculation would move the clipped part into the
+  integral, cancelling the feedforward for good (with ``T_t = h``, entirely).
 * Sign convention (ISA): a *reverse-acting* controller raises its output when
   the measurement falls, which suits a positive-gain process (heater power ->
   temperature). A *direct-acting* controller raises its output when the
@@ -70,7 +77,8 @@ class PIDController:
     anti_windup : ``False`` gives a naive integrator (for comparison studies)
     feedforward : optional static feedforward ``u_ff(d)``: a callable of the
         measured disturbance vector returning the input *deviation* from
-        ``bias`` that cancels it [input units]
+        ``bias`` that cancels it [input units]. It starts from zero and is
+        applied no faster than ``rate_max``
     """
 
     def __init__(
@@ -124,6 +132,7 @@ class PIDController:
         """Zero the integral and derivative states; output restarts at ``bias``."""
         self._i = 0.0
         self._d = 0.0
+        self._ff = 0.0
         self._y_prev: float | None = None
         self._u_prev = float(np.clip(self.bias, self.u_min, self.u_max))
         self._last: dict[str, float] = {}
@@ -152,7 +161,9 @@ class PIDController:
         if self.feedforward is not None:
             if d_hat is None:
                 raise ValueError("feedforward is configured but no disturbance d_hat was given")
-            ff = float(self.feedforward(np.asarray(d_hat, dtype=float)))
+            target = float(self.feedforward(np.asarray(d_hat, dtype=float)))
+            ff = min(max(target, self._ff - self.rate_max * h), self._ff + self.rate_max * h)
+            self._ff = ff
 
         v = self.bias + p + self._i + self._d + ff
         lo = max(self.u_min, self._u_prev - self.rate_max * h)

@@ -491,11 +491,9 @@ class FeedforwardPID:
 
     * The power is low-pass filtered, ``s_k = s_{k-1} + h / (T_f + h) (Q_k -
       s_{k-1})``, when ``filter_time = T_f > 0`` (for the noisy signal).
-    * The feedforward is ramped at no more than the gate slew rate. Without
-      this, :class:`PIDController`'s back-calculation (tracking time ``dt``
-      for a PI) loads the integrator with every part of a feedforward step
-      the rate limit clips, which cancels the step permanently (see the
-      study report).
+    * The feedforward is ramped at no more than the gate slew rate, so a
+      power step never asks the gate for more than it can deliver.
+      (:class:`PIDController` applies the same limit to its feedforward term.)
 
     Parameters
     ----------

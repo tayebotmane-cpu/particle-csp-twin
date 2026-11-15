@@ -195,6 +195,26 @@ def test_static_feedforward_cancels_a_measured_disturbance(first_order):
     np.testing.assert_allclose(with_ff.y_meas, no_dist.y_meas, atol=1e-12)
 
 
+def test_rate_limited_feedforward_step_is_delivered_in_full():
+    """A feedforward step larger than one slew step must not be lost to anti-windup.
+
+    With zero error throughout, the output ramps at the slew rate to
+    ``bias + u_ff`` and stays there. Back-calculation with ``T_t = dt`` used to
+    move the clipped part of the step into the integral: the output stopped
+    after one slew step (2.4 here) and never reached 1.6.
+    """
+    pid = PIDController(
+        0.02, 0.003, 0.0, 1.0, action="direct", bias=2.5, rate_max=0.1, feedforward=lambda d: d[0]
+    )
+    out = np.array(
+        [pid.step(k, [100.0], [100.0], d_hat=[0.0 if k < 5 else -0.9])[0] for k in range(40)]
+    )
+    np.testing.assert_allclose(out[:5], 2.5)
+    np.testing.assert_allclose(out[5:14], 2.5 - 0.1 * np.arange(1, 10), atol=1e-12)
+    np.testing.assert_allclose(out[14:], 1.6, atol=1e-12)
+    assert abs(pid.diagnostics()["i"]) < 1e-12
+
+
 def test_feedforward_without_disturbance_is_an_error():
     pid = PIDController(1.0, 0.0, 0.0, 1.0, feedforward=lambda d: d[0])
     with pytest.raises(ValueError, match="d_hat"):
