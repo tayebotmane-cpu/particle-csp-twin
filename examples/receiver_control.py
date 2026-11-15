@@ -2,7 +2,7 @@
 
 Usage (from the repository root)::
 
-    .venv/bin/python examples/receiver_control.py                       # 20 seeds, ~1 h
+    .venv/bin/python examples/receiver_control.py                       # 20 seeds, ~2 h
     .venv/bin/python examples/receiver_control.py --seeds 5 --sensitivity-seeds 3 --workers 4
 
 Steps: tune the baselines and the twin on the controller model (PID gains,
@@ -11,7 +11,9 @@ defaults), check observability of the incident power, measure the estimators'
 open-loop detection delay, run the Monte Carlo over noise seeds for all
 configurations, then the mismatch / step-size sensitivity. Writes under
 ``--output-dir`` (default ``outputs/receiver_control``): ``results_table.txt``,
-``results.json`` and ``figures/*.png``. See :mod:`pcsp.pipelines.receiver_control`.
+``results.json`` and ``figures/*.png``. They are written after each step, so a
+run that is interrupted keeps the steps it finished (``stages_done`` in
+``results.json``). See :mod:`pcsp.pipelines.receiver_control`.
 """
 
 from __future__ import annotations
@@ -283,7 +285,25 @@ def main() -> None:
         setup, tuning = tune(setup, args.workers)
         wall["tuning"] = tuning["wall_time_s"]
 
+    stages_done: list[str] = []
+    payload: dict[str, object] = {
+        "setup": setup,
+        "tuning": tuning,
+        "workers": args.workers,
+        "stages_done": stages_done,
+        "wall_time_s": wall,
+    }
+
+    def save(stage: str) -> None:
+        """Write everything computed so far, so an interrupted run keeps its finished stages."""
+        stages_done.append(stage)
+        wall["total"] = time.perf_counter() - t_start
+        text = json.dumps(_jsonable(payload), indent=1)
+        (args.output_dir / "results.json").write_text(text)
+
+    save("setup" if tuning is None else "tuning")
     obs = observability_report(setup)
+    payload["observability"] = obs
     print("\nObservability of incident power (augmented controller model):")
     for row in obs:
         print(f"  {row.sensors:30s} Q={row.power / 1e3:4.0f} kW  rank {row.rank}/{row.n_states}  "
@@ -293,7 +313,8 @@ def main() -> None:
     seeds = list(range(args.first_seed, args.first_seed + args.seeds))
     detection = [estimator_detection(c, setup, s) for c in ("C", "D") for s in seeds[:5]]
     wall["detection"] = time.perf_counter() - t0
-    print("\nOpen-loop detection of the power step (gate held; mean over 5 seeds) [s]:")
+    print(f"\nOpen-loop detection of the power step (gate held; mean over {len(seeds[:5])} "
+          "seeds) [s]:")  # fmt: skip
     for c in ("C", "D"):
         rows = [d for d in detection if d.config == c]
         mean = {k: np.mean([getattr(d, k) for d in rows]) for k in
@@ -302,6 +323,8 @@ def main() -> None:
               f"90 % {mean['t90']:.1f}; thermocouple 50 % {mean['tc_t50']:.1f}, "
               f"90 % {mean['tc_t90']:.1f}; settled estimate - true "
               f"{mean['final_error'] / 1e3:.1f} kW")  # fmt: skip
+    payload["detection"] = detection
+    save("detection")
 
     t0 = time.perf_counter()
     results = run_monte_carlo(setup, seeds=seeds, workers=args.workers, trajectory_seed=seeds[0])
@@ -312,6 +335,13 @@ def main() -> None:
     for c in CONFIGURATIONS:
         print(f"  {c}: Sandia pass rate {100 * summaries[c].pass_rate:.0f} %, worst 2 sigma "
               f"{summaries[c].worst['two_sigma_max']:.2f} K")  # fmt: skip
+    (args.output_dir / "results_table.txt").write_text(table + "\n")
+    plot_timeseries(results, setup, fig_dir / "timeseries.png")
+    plot_power_estimate(results, setup, fig_dir / "power_estimate.png")
+    plot_summary(results, summaries, fig_dir / "summary.png")
+    payload["summaries"] = summaries
+    payload["runs"] = [dataclasses.replace(r, trajectory=None) for r in results]
+    save("monte_carlo")
 
     sensitivity = []
     if not args.skip_sensitivity:
@@ -328,27 +358,10 @@ def main() -> None:
                 for c, s in p.summaries.items()
             )
             print(f"  {p.label:14s} {cells}")
-
-    plot_timeseries(results, setup, fig_dir / "timeseries.png")
-    plot_power_estimate(results, setup, fig_dir / "power_estimate.png")
-    plot_summary(results, summaries, fig_dir / "summary.png")
-    if sensitivity:
         plot_sensitivity(sensitivity, fig_dir / "sensitivity.png")
-    wall["total"] = time.perf_counter() - t_start
+        payload["sensitivity"] = sensitivity
+        save("sensitivity")
 
-    (args.output_dir / "results_table.txt").write_text(table + "\n")
-    payload = {
-        "setup": setup,
-        "tuning": tuning,
-        "observability": obs,
-        "detection": detection,
-        "summaries": summaries,
-        "runs": [dataclasses.replace(r, trajectory=None) for r in results],
-        "sensitivity": sensitivity,
-        "workers": args.workers,
-        "wall_time_s": wall,
-    }
-    (args.output_dir / "results.json").write_text(json.dumps(_jsonable(payload), indent=1))
     print(f"\nwall time [s]: {', '.join(f'{k} {v:.0f}' for k, v in wall.items())}")
     print(f"results in {args.output_dir}")
 
