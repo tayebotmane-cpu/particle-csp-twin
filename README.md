@@ -127,25 +127,31 @@ shorter version.
 
 The time-dependent heat exchanger model is compared with the response times
 published by Fang et al. (2022, Energy 256, 124597): the time for an outlet
-temperature to complete 95 % of its change after a step at one inlet. That
-paper does not print the bed conductivity, the bed heat capacity, the
-particle diameter or the plate properties, so these are assumptions here.
-Times are from an exponential fit, as in the paper.
+temperature to complete 95 % of its change after a step at one inlet. The
+bed conductivity and heat capacity are the fits printed in Fang et al. (2021,
+Energy 217, 119389); the plate properties are those of Fernandez-Torrijos et
+al. (2018, Applied Energy 226, 595), against which that paper validated its
+transients. The particle diameter (250 um) remains an assumption. Times are
+from an exponential fit, as in the paper; steps keep the inlet velocity fixed,
+as the paper specifies.
 
-| Step in | Outlet | Published [s] | This model [s] |
-|---|---|---|---|
-| Particle inlet temperature | sCO2 | 338 | 445 |
-| Particle inlet temperature | Particles | 969 | 812 |
-| sCO2 inlet temperature | sCO2 | 560 | 578 |
-| sCO2 inlet temperature | Particles | 461 | 459 |
-| sCO2 flow | sCO2 | 367 | 353 |
-| sCO2 flow | Particles | 979 | 789 |
+| Step in | Outlet | Published [s] | This model [s] | Difference |
+|---|---|---|---|---|
+| Particle inlet temperature | sCO2 | 338 | 368 | +9 % |
+| Particle inlet temperature | Particles | 969 | 975 | +1 % |
+| sCO2 inlet temperature | sCO2 | 560 | 657 | +17 % |
+| sCO2 inlet temperature | Particles | 461 | 424 | -8 % |
+| sCO2 flow | sCO2 | 367 | 403 | +10 % |
+| sCO2 flow | Particles | 979 | 878 | -10 % |
 
-Three of the six are within 4 %; the others are 16 to 32 % off. The plate
-heat capacity and the bed conductivity dominate: halving or doubling the
-former moves every time by 30 to 70 %, and no single choice of the unknown
-inputs matches all six. The model's steady state is also weaker than the
-paper's (overall coefficient 106 against about 137 W/m2/K).
+Five of the six are within 10 %. No input was adjusted to obtain this. The
+steady outlet temperatures are 4 to 6 K below the paper's (961 and 844 K
+against about 965 and 850 K). A likely contributor to what remains is the
+paper's treatment of the sCO2 flow: it solves the velocity field with
+constant properties and the energy equation with local ones, which this
+model, conserving mass, does not imitate. With the inputs assumed before the
+two source papers were available, three times agreed within 4 % and three
+were 16 to 32 % off.
 
 ## Verification and validation status
 
@@ -156,7 +162,7 @@ that no result is read as stronger than it is.
 | Model | Verified against | Validation gap |
 |---|---|---|
 | Packed-bed storage | Anzelius-Schumann analytic solution (second-order convergence, normalised temperature error below 5e-5 at 200 cells), energy conservation, charge/discharge symmetry | No experimental comparison yet |
-| Moving-bed heat exchanger | Graetz series and its limits, energy balance between the two streams, sCO2 properties against CoolProp, and an independent two-dimensional solution of the same equations (reduced model within 3 %) | Against the design study of Albrecht and Ho (2019) with its own inputs: 165 W/m2/K where the paper reports 144; the two-dimensional solution gives 160. The paper's tables are reproduced to within 2 to 5 % with a uniform-temperature wall condition. Two closure constants are not printed in the paper and were inferred from its numbers. No comparison with measurements yet: Sandia's 100 kW prototype measured 50 to 80 W/m2/K, 30 to 50 % below that group's own detailed model (Albrecht et al., 2020). The time-dependent model converges to the two-dimensional steady solution and conserves energy; its response times are only partly confirmed (see above) |
+| Moving-bed heat exchanger | Graetz series and its limits, energy balance between the two streams, sCO2 properties against CoolProp, and an independent two-dimensional solution of the same equations (reduced model within 3 %) | Against the design study of Albrecht and Ho (2019) with its own inputs: 165 W/m2/K where the paper reports 144; the two-dimensional solution gives 160. The paper's tables are reproduced to within 2 to 5 % with a uniform-temperature wall condition. Two closure constants are not printed in the paper and were inferred from its numbers. No comparison with measurements yet: Sandia's 100 kW prototype measured 50 to 80 W/m2/K, 30 to 50 % below that group's own detailed model (Albrecht et al., 2020). The time-dependent model converges to the two-dimensional steady solution and conserves energy; its response times are within 10 % of a published simulation for five of six cases (see above). No measured response times have been used |
 | Falling-particle receiver | Energy budget closure, agreement of the NumPy and CasADi evaluations | Compared with 39 of 47 G3P3 on-sun tests (Ho et al., 2020), which used a different receiver configuration and do not tabulate incident power: outlet temperature RMSE 9 K with the nominal loss coefficient, thermal efficiency RMSE 0.20. Fitting the loss coefficient on half the cases does not improve the other half. The 26-case NSTTF validation set has not been used. The dynamic time constants are assumed, not identified |
 
 Particle properties also need checking against primary sources: the CARBO HSP

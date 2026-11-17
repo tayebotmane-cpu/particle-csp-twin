@@ -11,6 +11,7 @@ from pcsp.models.hx.conjugate import solve_conjugate
 from pcsp.models.hx.dynamic import (
     FANG2022_RESPONSE_TIMES,
     MovingBedHXDynamic,
+    fang2021_heat_capacity,
     fang2022_co2_mass_flow,
     fang2022_params,
     simulate_response,
@@ -183,6 +184,16 @@ def test_particle_outlet_is_a_mixing_cup_temperature(coarse, coarse_steady):
 def test_fang_reference_data():
     assert FANG2022_RESPONSE_TIMES["T_particle_in"] == {"T_co2_out": 338.0, "T_particle_out": 969.0}
     params = fang2022_params()
+    # Bed properties printed in Fang et al. (2021): conductivity eq. 3, heat capacity eq. 2
+    # (1082.6 J/kg/K at 823 K by hand), the latter as a power law within 1 % over 750-1150 K.
+    assert params.closure.name == "bauxite_fit_thin_film"
+    assert fang2021_heat_capacity(823.0) == pytest.approx(1082.6, abs=0.1)
+    T = np.linspace(750.0, 1150.0, 41)
+    np.testing.assert_allclose(params.particle.cp(T), fang2021_heat_capacity(T), rtol=0.01)
+    assert params.particle.rho_bulk == pytest.approx(2000.0)
+    # Plate of Fernandez-Torrijos et al. (2018), Table 1: 8238 kg/m3 x 468 J/kg/K x 1 mm.
+    model = MovingBedHXDynamic(params, n_z=4, n_y=2)
+    assert model.plate_heat_capacity == pytest.approx(3855.4, rel=1e-4)
     assert params.m_dot_particle == pytest.approx(0.06)  # 2000 * 0.003 * 0.01 * 1 m
     assert fang2022_co2_mass_flow(0.5) == pytest.approx(params.m_dot_co2)
     assert params.m_dot_co2 == pytest.approx(0.0769, rel=2e-3)  # 153.8 kg/m3 * 0.5 m/s * 1 mm

@@ -113,10 +113,10 @@ Assumptions
   series resistance, about 9e-3), no conduction along ``z`` (in the Fang
   et al. base case the plate carries :math:`k_m t\\, dT/dz \\approx 23 \\times
   10^{-3} \\times 200` = 5 W per metre of width along ``z``, against a duty of
-  about 13 kW per metre of width). Default :math:`C_w = 8000 \\times 550
+  about 13 kW per metre of width). Default :math:`C_w = 8238 \\times 468
   \\times t` J m^-2 K^-1, i.e. :data:`PLATE_DENSITY` and
-  :data:`PLATE_HEAT_CAPACITY` - **assumptions** for a stainless or nickel
-  alloy near 900 K, not taken from a source.
+  :data:`PLATE_HEAT_CAPACITY`, the plate properties of Fernandez-Torrijos,
+  Albrecht & Ho (2018, Table 1).
 * **Bed.** Plug flow at a uniform velocity, no axial conduction (the axial
   Peclet number :math:`u H / \\alpha` is about 2e4), no heat loss. The
   near-wall layer is a resistance without heat capacity, and it does not
@@ -171,17 +171,17 @@ from scipy.sparse.linalg import spsolve
 from pcsp.core.backend import ops_for
 from pcsp.core.interfaces import ControlModelBase
 from pcsp.materials import sco2
-from pcsp.materials.particles import CARBO_HSP_40_70
+from pcsp.materials.particles import ParticleMaterial
 from pcsp.models.hx.channel import RE_MIN
-from pcsp.models.hx.closures import BedClosure, YagiKuniiBed
+from pcsp.models.hx.closures import BauxiteFitBed, BedClosure
 from pcsp.models.hx.model import MovingBedHXParams
 
-PLATE_DENSITY = 8000.0
-"""Plate density [kg m^-3]. **Assumption** (stainless steel / nickel alloy)."""
+PLATE_DENSITY = 8238.0
+"""Plate density [kg m^-3] (Fernandez-Torrijos, Albrecht & Ho, Applied Energy
+226 (2018) 595-606, Table 1)."""
 
-PLATE_HEAT_CAPACITY = 550.0
-"""Plate specific heat capacity [J kg^-1 K^-1]. **Assumption** (stainless or
-nickel alloy near 900 K; not checked against a primary table)."""
+PLATE_HEAT_CAPACITY = 468.0
+"""Plate specific heat capacity [J kg^-1 K^-1] (same table)."""
 
 NU_LAMINAR_SLOT_H = 8.235
 """Fully developed laminar Nusselt number of a parallel-plate channel heated on
@@ -306,7 +306,6 @@ class MovingBedHXDynamic(ControlModelBase):
     n_z, n_y : cells along the flow and across the half gap
     plate_heat_capacity : :math:`C_w` per unit wall area [J m^-2 K^-1];
         default ``PLATE_DENSITY * PLATE_HEAT_CAPACITY * params.wall_thickness``
-        (assumption)
     co2_htc : ``"gnielinski"``, ``"laminar"`` or a fixed coefficient
         [W m^-2 K^-1] (see the module docstring)
     T_range : temperature range [K] of the polynomial fits; states must stay
@@ -824,6 +823,38 @@ FANG2022_BASE = {
 """Base case, Fang et al. (2022) Table 1 (SI units)."""
 
 
+def fang2021_heat_capacity(T: Any) -> Any:
+    """Bed heat capacity [J kg^-1 K^-1] at ``T`` [K]: Fang et al. (2021), eq. 2.
+
+    Their cubic fit to the sintered-bauxite measurements of Baumann & Zunft
+    (2015): 1083 at 823 K, 1096 at 1048 K.
+    """
+    return 8e-7 * T**3 - 2.56e-3 * T**2 + 2.74 * T + 115.6
+
+
+FANG2021_CP_POWER_LAW = (847.55, 0.03873)
+"""``(cp_a, cp_b)`` of :class:`~pcsp.materials.particles.ParticleMaterial`
+(:math:`c_p = a (T - 273.15)^b`) fitted to :func:`fang2021_heat_capacity`
+over 750-1150 K; it differs from the cubic by at most 0.8 % there."""
+
+
+def fang2021_particle(d_p: float = 250e-6) -> ParticleMaterial:
+    """Particles of the Fang et al. reference case (see :func:`fang2022_params`)."""
+    solid_fraction = 0.60
+    return ParticleMaterial(
+        name="fang2021_sintered_bauxite",
+        rho_p=FANG2022_BASE["rho_bulk"] / solid_fraction,
+        d_p=d_p,
+        k_s=2.0,
+        emissivity=0.9,
+        solar_absorptivity=0.9,
+        cp_a=FANG2021_CP_POWER_LAW[0],
+        cp_b=FANG2021_CP_POWER_LAW[1],
+        packing_fraction=solid_fraction,
+        source="Fang et al., Energy 217 (2021) 119389, eq. 2 (power-law approximation)",
+    )
+
+
 def fang2022_co2_mass_flow(u_co2_in: float, T_co2_in: float = 823.0, width: float = 1.0) -> float:
     """sCO2 mass flow per unit cell [kg s^-1] for an inlet velocity [m s^-1].
 
@@ -850,24 +881,31 @@ def fang2022_params(
     sCO2 inlet 823 K at 0.5 m/s and 25 MPa, near-wall layer ``d_p / 2`` with
     the thin-film conductivity of Albrecht & Ho (2019).
 
-    Not in the paper, chosen here (**assumptions**):
+    From the papers it cites:
 
-    * particles: :data:`~pcsp.materials.particles.CARBO_HSP_40_70` (sintered
-      bauxite; bulk density 2000 kg/m3 as in the paper; heat capacity
-      :math:`365 (T - 273.15)^{0.18}`, 1150-1210 J/kg/K over 850-1050 K), with
-      diameter ``d_p`` (default 250 um, that of Albrecht & Ho's case against
-      which Fang et al. validated). The paper fits ``c_p(T)`` and ``k(T)`` to
-      Baumann & Zunft (2015) data for sintered bauxite but does not print the fits.
-    * bed closure: :class:`~pcsp.models.hx.closures.YagiKuniiBed` (Albrecht &
-      Ho's bulk conductivity, about 0.27 W/m/K at 700 degC, and their
-      near-wall layer), unless ``closure`` is given;
+    * bed heat capacity and conductivity: the fits of Fang et al. (2021, eq. 2
+      and 3) to sintered-bauxite measurements (:func:`fang2021_particle`,
+      :class:`~pcsp.models.hx.closures.BauxiteFitBed`), about 1090 J/kg/K
+      and 0.44-0.52 W/m/K here;
+    * plate density and heat capacity: Fernandez-Torrijos, Albrecht & Ho
+      (2018), against whose transients Fang et al. validated their model
+      (:data:`PLATE_DENSITY`, :data:`PLATE_HEAT_CAPACITY`). That Fang et al.
+      used the same values is an **assumption**.
+
+    Not in any of these papers for this case, chosen here (**assumptions**):
+
+    * particle diameter ``d_p`` (default 250 um, that of Albrecht & Ho and of
+      Fernandez-Torrijos et al.) and solid conductivity 2 W/m/K; both enter
+      only the near-wall layer;
+    * near-wall constant ``phi_wall`` and air as the interstitial gas, as in
+      :class:`~pcsp.models.hx.closures.YagiKuniiBed`;
     * plate conductivity ``wall_conductivity`` (23 W/m/K);
     * width ``W`` (1 m; all results scale with it);
     * the slot is entered as circular channels of diameter ``2 s`` at pitch
       ``pi s``, the convention of :mod:`pcsp.models.hx.albrecht_ho`.
     """
     b = FANG2022_BASE
-    particle = CARBO_HSP_40_70.with_(d_p=d_p)
+    particle = fang2021_particle(d_p)
     m_p = b["rho_bulk"] * b["u_particle"] * b["channel_gap"] * width
     values: dict[str, Any] = {
         "m_dot_particle": m_p,
@@ -876,7 +914,7 @@ def fang2022_params(
         "T_co2_in": b["T_co2_in"],
         "p_co2": b["p_co2"],
         "particle": particle,
-        "closure": closure if closure is not None else YagiKuniiBed(),
+        "closure": closure if closure is not None else BauxiteFitBed(),
         "height": b["height"],
         "width": width,
         "channel_gap": b["channel_gap"],

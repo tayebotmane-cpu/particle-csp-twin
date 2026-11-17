@@ -14,6 +14,7 @@ control studies.
 from pcsp.models.hx import albrecht_ho, conjugate, graetz
 from pcsp.models.hx.closures import (
     AdapaFlowingBed,
+    BauxiteFitBed,
     BedClosure,
     ConstantBed,
     StagnantBed,
@@ -25,6 +26,7 @@ from pcsp.models.hx.model import MovingBedHXParams, local_coefficients, simulate
 
 __all__ = [
     "AdapaFlowingBed",
+    "BauxiteFitBed",
     "BedClosure",
     "ConstantBed",
     "MovingBedHXDynamic",

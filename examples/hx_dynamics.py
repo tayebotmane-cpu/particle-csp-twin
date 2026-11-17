@@ -50,7 +50,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from scipy.optimize import least_squares  # noqa: E402
 
-from pcsp.models.hx.closures import StagnantBed, YagiKuniiBed  # noqa: E402
+from pcsp.models.hx.closures import BauxiteFitBed, StagnantBed, YagiKuniiBed  # noqa: E402
 from pcsp.models.hx.conjugate import solve_conjugate  # noqa: E402
 from pcsp.models.hx.dynamic import (  # noqa: E402
     FANG2022_BASE,
@@ -114,11 +114,14 @@ BASELINE = {"n_z": 100, "n_y": 10}
 def variants() -> dict[str, dict[str, Any]]:
     """Sensitivity variants: changes to ``fang2022_params`` kwargs (``params``), model
     kwargs (``model``) and protocol (``co2_in_fixed_velocity``)."""
-    yk = YagiKuniiBed()
+    bed = BauxiteFitBed()
     return {
         "baseline": {},
-        "k_eff x0.7": {"params": {"closure": ScaledClosure(yk, k_factor=0.7)}},
-        "k_eff x1.5": {"params": {"closure": ScaledClosure(yk, k_factor=1.5)}},
+        "k_eff x0.7": {"params": {"closure": ScaledClosure(bed, k_factor=0.7)}},
+        "k_eff x1.5": {"params": {"closure": ScaledClosure(bed, k_factor=1.5)}},
+        "closure YagiKuniiBed (k about 0.27, no radiation)": {
+            "params": {"closure": YagiKuniiBed()}
+        },
         "closure StagnantBed (ZS + radiation)": {"params": {"closure": StagnantBed()}},
         "bed cp x0.9": {"cp_factor": 0.9},
         "bed cp x1.1": {"cp_factor": 1.1},
@@ -130,7 +133,7 @@ def variants() -> dict[str, dict[str, Any]]:
         "plate C_w x2": {"plate_factor": 2.0},
         "sCO2 laminar Nu = 8.235": {"model": {"co2_htc": "laminar"}},
         "sCO2 h = 1e5 (no sCO2 resistance)": {"model": {"co2_htc": 1e5}},
-        "T_co2_in steps at fixed inlet velocity": {"co2_in_fixed_velocity": True},
+        "T_co2_in steps at fixed mass flow": {"co2_in_fixed_velocity": False},
         "grid n_z = 50, n_y = 8": {"model": {"n_z": 50, "n_y": 8}},
         "grid n_z = 200, n_y = 20": {"model": {"n_z": 200, "n_y": 20}},
     }
@@ -223,7 +226,7 @@ def base_summary(model: MovingBedHXDynamic, ss: Any) -> dict[str, float]:
 
 
 def run_family(
-    model: MovingBedHXDynamic, base: Any, family: str, fixed_velocity: bool = False
+    model: MovingBedHXDynamic, base: Any, family: str, fixed_velocity: bool = True
 ) -> dict[str, Any]:
     t = np.arange(0.0, T_END + 0.5 * DT_SAMPLE, DT_SAMPLE)
     out: dict[str, Any] = {"steps": [], "t": t}
@@ -272,7 +275,7 @@ def run_variant(name: str, spec: dict[str, Any]) -> dict[str, Any]:
     base = steady_state(model, u, d)
     result = {"name": name, "base": base_summary(model, base), "families": {}}
     for family in FAMILIES:
-        fam = run_family(model, base, family, spec.get("co2_in_fixed_velocity", False))
+        fam = run_family(model, base, family, spec.get("co2_in_fixed_velocity", True))
         result["families"][family] = fam["summary"]
     result["nx"] = model.nx
     result["plate_heat_capacity"] = model.plate_heat_capacity
@@ -416,7 +419,8 @@ def main() -> None:
     }
     table1 = "\n".join(
         [
-            "## Base case steady state (Fang et al. Table 1 inputs, own assumptions)",
+            "## Base case steady state (Fang et al. Table 1; bed and plate properties from "
+            "the papers they cite)",
             "",
             "| Quantity | This model (100 x 10) | 2-D conjugate (n_y = 40) | Fang et al. "
             "(read from Figs. 3-9, +-3 K) |",
@@ -528,7 +532,7 @@ def main() -> None:
     ]
     for i, (case, (Tp, Tc, v)) in enumerate(FANG2022_TABLE2.items()):
         uu, dd = model.nominal_inputs()
-        dd = np.array([Tp, Tc, fang2022_co2_mass_flow(v, 823.0, p.width)])
+        dd = np.array([Tp, Tc, fang2022_co2_mass_flow(v, Tc, p.width)])
         traj = simulate_response(model, base.x, uu, dd, t)
         new = steady_state(model, uu, dd, x_guess=base.x)
         table2[case] = {

@@ -10,6 +10,7 @@ from pcsp.materials.particles import CARBO_HSP_40_70
 from pcsp.models.correlations import k_eff_zehner_schlunder
 from pcsp.models.hx import (
     AdapaFlowingBed,
+    BauxiteFitBed,
     BedClosure,
     ConstantBed,
     StagnantBed,
@@ -23,7 +24,13 @@ PARTICLE = CARBO_HSP_40_70.with_(d_p=280e-6, packing_fraction=0.55, emissivity=0
 
 
 def test_closures_satisfy_protocol_and_serialise():
-    closures = (ConstantBed(0.3, 1e-4), StagnantBed(), AdapaFlowingBed("CP 40/100"), YagiKuniiBed())
+    closures = (
+        ConstantBed(0.3, 1e-4),
+        StagnantBed(),
+        AdapaFlowingBed("CP 40/100"),
+        YagiKuniiBed(),
+        BauxiteFitBed(),
+    )
     for closure in closures:
         assert isinstance(closure, BedClosure)
         assert to_jsonable(closure)["name"] == closure.name
@@ -115,6 +122,21 @@ def test_yagi_kunii_near_wall_layer_hand_value_and_scaling():
     assert closure.k_eff(T, 0.0, large)[0] == closure.k_eff(T, 0.0, particle)[0]
     with pytest.raises(ValueError):
         YagiKuniiBed(phi=0.0)
+
+
+def test_bauxite_fit_closure_hand_values():
+    # Fang et al. (2021) eq. 3 by hand: at 1000 K, 0.2 - 0.464 + 0.709 + 0.056 = 0.501 W/m/K.
+    closure, particle = BauxiteFitBed(), albrecht_ho.paper_particle()
+    assert closure.k_eff(1000.0, 0.0, particle) == pytest.approx(0.501, rel=1e-12)
+    assert closure.k_eff(300.0, 0.0, particle) == pytest.approx(0.2323, rel=1e-3)
+    # Nearly twice the no-radiation conductivity of the Albrecht & Ho closure at 700 degC.
+    ratio = closure.k_eff(973.15, 0.0, particle) / YagiKuniiBed().k_eff(973.15, 0.0, particle)
+    assert 1.7 < float(ratio) < 2.0
+    # Same near-wall layer as the Albrecht & Ho closure.
+    T = np.array([900.0])
+    np.testing.assert_allclose(
+        closure.r_wall(T, 3e-3, particle), YagiKuniiBed().r_wall(T, 3e-3, particle), rtol=1e-14
+    )
 
 
 def test_gnielinski_hand_value_and_validity():

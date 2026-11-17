@@ -18,6 +18,7 @@ from pcsp.models.hx import (
 )
 from pcsp.models.hx.channel import friction_factor_petukhov
 from pcsp.models.hx.conjugate import solve_conjugate
+from pcsp.models.hx.model import co2_side
 
 CONSTANT_CP_PARTICLE = albrecht_ho.PARTICLE.with_(cp_a=1200.0, cp_b=0.0)
 
@@ -224,6 +225,17 @@ def test_two_paper_cases_have_laminar_sco2_flow_and_are_not_evaluated(case):
     # cases, below the range of the turbulent correlation, so the model refuses them.
     with pytest.raises(ValueError, match="Gnielinski"):
         simulate(albrecht_ho.paper_params(case))
+
+
+def test_sco2_coefficient_matches_the_value_quoted_for_the_same_geometry():
+    # Fernandez-Torrijos, Albrecht & Ho (2018): Gnielinski on a hydraulic diameter of twice
+    # the 0.5 mm slot gives 600 W/m2/K at their design point (20 MPa, 26.7 g/s of sCO2,
+    # properties at the mean of the inlet temperatures, 662.5 degC). Here: 607 at Re = 2615.
+    params = albrecht_ho.paper_params(p_co2=20e6, m_dot_co2=26.7e-3)
+    re, h, r = co2_side(params, 662.5 + 273.15)
+    assert float(h) == pytest.approx(600.0, rel=0.02)
+    assert float(r) == pytest.approx(1.0 / float(h), rel=1e-12)  # slot: wetted area = wall area
+    assert 2300.0 < float(re) < 3000.0
 
 
 def test_non_particle_resistance_agrees_with_paper():

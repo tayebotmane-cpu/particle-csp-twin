@@ -257,6 +257,56 @@ class YagiKuniiBed:
         return particle.d_p / (2.0 * self.k_near_wall(T, particle))
 
 
+@dataclass(frozen=True)
+class BauxiteFitBed:
+    """Measured conductivity of a sintered-bauxite bed, with the thin-film near-wall layer.
+
+    Bulk conductivity: the cubic that Fang et al. (2021, eq. 3) fitted to the
+    packed-bed measurements of Baumann & Zunft (2015) for sintered bauxite,
+
+    .. math::
+        k_{eff} = 2\\times10^{-10} T^3 - 4.64\\times10^{-7} T^2 + 7.09\\times10^{-4} T + 0.056 ,
+
+    with ``T`` in kelvin and :math:`k_{eff}` in W/m/K: 0.23 at 300 K, 0.44 at
+    550 degC and 0.52 at 775 degC. Being a fit to measurements it contains the
+    radiation that the measured bed had. The paper states neither the range of
+    the fit nor the particle size of the measured material, and the value does
+    not depend on the particle given to this class.
+
+    Near-wall resistance: the thin-film layer of :class:`YagiKuniiBed`, which
+    is what Fang et al. use (they cite Albrecht & Ho, 2019, for it).
+
+    This is the bed of the reference case of Fang, Chen & Shi (2022); see
+    :func:`pcsp.models.hx.dynamic.fang2022_params`. It is nearly twice as
+    conductive as :class:`YagiKuniiBed` (0.27 W/m/K at 700 degC).
+
+    References: Fang, W., Chen, S., Xu, J., Zeng, K., 2021. Predicting heat
+    transfer coefficient of a shell-and-plate, moving packed-bed
+    particle-to-sCO2 heat exchanger for concentrating solar power. Energy 217,
+    119389 (journal pre-proof consulted). Baumann, T., Zunft, S., 2015. Sol.
+    Energy Mater. Sol. Cells 143, 38-47 (not consulted).
+
+    Attributes
+    ----------
+    phi_wall : :math:`\\varphi_w` of the near-wall layer [-], as in :class:`YagiKuniiBed`
+    """
+
+    phi_wall: float = 0.118
+    name: str = "bauxite_fit_thin_film"
+
+    def __post_init__(self) -> None:
+        _check_name(self, "bauxite_fit_thin_film")
+        if self.phi_wall <= 0.0:
+            raise ValueError("phi_wall must be positive")
+
+    def k_eff(self, T: np.ndarray, u: float, particle: ParticleMaterial) -> np.ndarray:
+        T = np.asarray(T, dtype=float)
+        return 2e-10 * T**3 - 4.64e-7 * T**2 + 7.09e-4 * T + 0.056
+
+    def r_wall(self, T: np.ndarray, u: float, particle: ParticleMaterial) -> np.ndarray:
+        return YagiKuniiBed(phi_wall=self.phi_wall).r_wall(T, u, particle)
+
+
 ADAPA_2024_TABLE7 = {
     "CP 40/100": {"d_air": (1.3e-2, 25.0), "k_eff": (2.8e-4, 0.13)},
     "HSP 40/70": {"d_air": (2e-2, 22.0), "k_eff": (1.5e-4, 0.23)},

@@ -22,13 +22,19 @@ Not printed in the paper, and chosen here:
 * The four constants of their bed closure: see
   :class:`pcsp.models.hx.closures.YagiKuniiBed`, the default closure of
   :func:`paper_params`.
-* Plate thickness: 1 mm (the value of the same group's later study and of
-  Fang et al., 2022). It is 3 % of the non-particle resistance.
+* Plate thickness: 1 mm. It is 3 % of the non-particle resistance.
 * sCO2 coefficient: the Gnielinski correlation of
   :mod:`pcsp.models.hx.channel`. Their sCO2 channel is a slot heated on both
   sides. A slot of width ``s`` has the same Reynolds number, coefficient and
   wetted area as the model's circular channels with diameter ``2 s`` at pitch
   ``pi s``, which is how it is entered here.
+
+  Both choices are confirmed by the same group's transient study of this
+  geometry (Fernandez-Torrijos, Albrecht & Ho, Applied Energy 226 (2018)
+  595-606): its Table 2 gives a 1 mm plate, and it states that the sCO2
+  coefficient is the Gnielinski correlation on a hydraulic diameter of twice
+  the slot width, 600 W/m2/K at its design point (20 MPa, 26.7 g/s). The
+  model gives 607 there (``tests/models/hx/test_model.py``).
 * Interstitial gas: air.
 
 How the comparison comes out is recorded in ``tests/models/hx/test_model.py``.
