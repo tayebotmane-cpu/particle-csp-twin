@@ -180,6 +180,23 @@ def _co2_table(params: MovingBedHXParams) -> sco2.SCO2Isobar:
     return sco2.isobar(params.p_co2, SCO2_TABLE_T_MIN, SCO2_TABLE_T_MAX)
 
 
+def co2_side(
+    params: MovingBedHXParams, T_co2: np.ndarray | float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """sCO2 channel Reynolds number, coefficient and resistance at temperature ``T_co2`` [K].
+
+    Returns ``(Re, h, r)``: ``h`` [W m^-2 K^-1] on the channel wetted area and
+    ``r`` [m^2 K W^-1] referred to the particle-side wall area.
+    """
+    p = params
+    co2 = _co2_table(p)
+    d = p.co2_channel_diameter
+    m_channel = p.m_dot_co2 / p.n_co2_channels
+    re = 4.0 * m_channel / (np.pi * d * co2.mu(T_co2))
+    h = nusselt_gnielinski(re, co2.prandtl(T_co2)) * co2.k(T_co2) / d
+    return re, h, 2.0 * p.width / (h * p.n_co2_channels * np.pi * d)
+
+
 def local_coefficients(
     params: MovingBedHXParams, T_particle: np.ndarray, T_co2: np.ndarray
 ) -> dict[str, np.ndarray]:
@@ -191,7 +208,6 @@ def local_coefficients(
     ``U``.
     """
     p = params
-    co2 = _co2_table(p)
     dz = p.height / p.n_cells
     b = 0.5 * p.channel_gap
     u = p.particle_velocity
@@ -205,11 +221,7 @@ def local_coefficients(
     nu_bed = graetz.nusselt_cell(xi_faces[:-1], xi_faces[1:], p.wall_bc)
     h_bed = nu_bed * k_eff / (4.0 * b)
 
-    d = p.co2_channel_diameter
-    m_channel = p.m_dot_co2 / p.n_co2_channels
-    re_co2 = 4.0 * m_channel / (np.pi * d * co2.mu(Tc))
-    h_co2 = nusselt_gnielinski(re_co2, co2.prandtl(Tc)) * co2.k(Tc) / d
-    r_co2 = 2.0 * p.width / (h_co2 * p.n_co2_channels * np.pi * d)
+    re_co2, h_co2, r_co2 = co2_side(p, Tc)
     r_metal = p.wall_thickness / p.wall_conductivity
 
     U = 1.0 / (1.0 / h_bed + r_near_wall + r_metal + r_co2)

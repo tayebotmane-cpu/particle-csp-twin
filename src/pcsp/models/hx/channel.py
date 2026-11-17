@@ -11,8 +11,16 @@ with :math:`Re = \\rho u D / \\mu` and :math:`Nu = h D / k` on the channel
 hydraulic diameter ``D``. Quoted validity: :math:`3000 \\le Re \\le 5\\times10^6`,
 :math:`0.5 \\le Pr \\le 2000` (as stated in Incropera et al., Fundamentals of
 Heat and Mass Transfer, eq. 8.62 and 8.21; not re-checked against the
-original papers here). Outside that range :func:`nusselt_gnielinski` raises
-rather than extrapolate.
+original papers here).
+
+:func:`nusselt_gnielinski` accepts Reynolds numbers down to 2300, the usual
+end of laminar flow, and raises below that rather than extrapolate. Between
+2300 and 3000 the flow is transitional and the value is only approximate. The
+lower limit is 2300 and not 3000 because the reference design of Albrecht &
+Ho (2019) runs at :math:`Re \\approx 2950\\text{-}3270`
+(:mod:`pcsp.models.hx.albrecht_ho`); there the correlation gives a coefficient
+of about 750 W m^-2 K^-1, in line with the roughly 760 that their reported
+sensitivity to the sCO2 coefficient implies.
 
 The frictional pressure gradient is the Darcy-Weisbach law
 :math:`-dp/dz = f_D \\, G^2 / (2 \\rho D)` with mass flux ``G``
@@ -28,7 +36,7 @@ from __future__ import annotations
 
 import numpy as np
 
-RE_MIN = 3000.0
+RE_MIN = 2300.0
 RE_MAX = 5e6
 PR_MIN = 0.5
 PR_MAX = 2000.0

@@ -175,6 +175,88 @@ class StagnantBed:
         return self.gas_film_factor * particle.d_p / air.k(T)
 
 
+@dataclass(frozen=True)
+class YagiKuniiBed:
+    """Closure used by Albrecht & Ho (2019): no radiation, thin-film near-wall layer.
+
+    Bulk conductivity (their eq. 15: the Yagi & Kunii (1957) stagnant-bed
+    expression without its radiation terms), with air at the bed temperature
+    as the gas:
+
+    .. math::
+        k_{eff} = \\frac{k_g \\, \\beta \\, (1 - \\varepsilon)}{\\gamma \\, k_g / k_s + \\varphi} .
+
+    Near-wall resistance (their eq. 18-20, after Botterill & Denloye, 1978): a
+    layer half a particle diameter thick with a higher voidage
+    :math:`\\varepsilon_w` and the conductivity of thin-film conduction only,
+
+    .. math::
+        R_w = \\frac{d_p}{2 k_{nw}}, \\qquad
+        k_{nw} = k_g \\left[ \\varepsilon_w
+          + \\frac{1 - \\varepsilon_w}{2 \\varphi_w + \\tfrac{2}{3} k_g / k_s} \\right], \\qquad
+        \\varepsilon_w = 1 - 0.7293 \\, (1 - \\varepsilon) ,
+
+    the last being their eq. 20 for a flat wall.
+
+    The paper does not print :math:`\\beta`, :math:`\\gamma`,
+    :math:`\\varphi` or :math:`\\varphi_w`. The defaults are obtained as
+    follows, and anyone with the original papers should check them.
+
+    * ``beta = 0.95`` and ``gamma = 2/3`` are the values usually quoted for the
+      Yagi-Kunii model (not checked against the original).
+    * ``phi = 0.1175`` gives :math:`k_{eff} = 0.2707` W/m/K at 700 degC for
+      their particles (:math:`k_s = 2`, :math:`\\varepsilon = 0.4`). That is
+      the conductivity implied by the fully developed coefficients they quote
+      at 700 degC, 270.7 and 222.65 W/m2/K (Nusselt numbers 12 and
+      :math:`\\pi^2` on a hydraulic diameter of 12 mm).
+    * ``phi_wall = 0.118`` gives a near-wall resistance of 8.5e-4 m2K/W at the
+      mean bed temperature of their nominal case. Straight-line fits of their
+      particle-wall coefficient against particle diameter (their Table 2) and
+      against plate spacing (their Table 3) both give 8.6e-4.
+
+    Only :math:`k_{eff}(T)` and :math:`R_w(T)` enter the heat-exchanger model,
+    so other combinations of the four constants with the same two functions
+    are equivalent.
+
+    References: Albrecht, K.J., Ho, C.K., 2019. Heat transfer models of moving
+    packed-bed particle-to-sCO2 heat exchangers. J. Sol. Energy Eng. 141,
+    031006 (accepted manuscript of 2018 consulted). Yagi, S., Kunii, D., 1957.
+    AIChE J. 3, 373-381, and Botterill, J.S.M., Denloye, A.O.O., 1978. Chem.
+    Eng. Sci. 33, 509-515 (neither consulted; as used by Albrecht & Ho).
+
+    Attributes
+    ----------
+    phi, phi_wall : :math:`\\varphi` and :math:`\\varphi_w` [-]
+    beta, gamma : :math:`\\beta` and :math:`\\gamma` [-]
+    """
+
+    phi: float = 0.1175
+    phi_wall: float = 0.118
+    beta: float = 0.95
+    gamma: float = 2.0 / 3.0
+    name: str = "yagi_kunii_thin_film"
+
+    def __post_init__(self) -> None:
+        _check_name(self, "yagi_kunii_thin_film")
+        if min(self.phi, self.phi_wall, self.beta, self.gamma) <= 0.0:
+            raise ValueError("phi, phi_wall, beta and gamma must be positive")
+
+    def k_eff(self, T: np.ndarray, u: float, particle: ParticleMaterial) -> np.ndarray:
+        k_g = air.k(np.asarray(T, dtype=float))
+        solid_fraction = 1.0 - particle.void_fraction
+        return k_g * self.beta * solid_fraction / (self.gamma * k_g / particle.k_s + self.phi)
+
+    def k_near_wall(self, T: np.ndarray, particle: ParticleMaterial) -> np.ndarray:
+        """Conductivity of the near-wall layer :math:`k_{nw}` [W m^-1 K^-1]."""
+        k_g = air.k(np.asarray(T, dtype=float))
+        eps_w = 1.0 - 0.7293 * (1.0 - particle.void_fraction)
+        film = 2.0 * self.phi_wall + (2.0 / 3.0) * k_g / particle.k_s
+        return k_g * (eps_w + (1.0 - eps_w) / film)
+
+    def r_wall(self, T: np.ndarray, u: float, particle: ParticleMaterial) -> np.ndarray:
+        return particle.d_p / (2.0 * self.k_near_wall(T, particle))
+
+
 ADAPA_2024_TABLE7 = {
     "CP 40/100": {"d_air": (1.3e-2, 25.0), "k_eff": (2.8e-4, 0.13)},
     "HSP 40/70": {"d_air": (2e-2, 22.0), "k_eff": (1.5e-4, 0.23)},
