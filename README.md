@@ -10,6 +10,9 @@ repository currently holds a first slice through all three tiers that runs on a
 laptop. Fast first-principles models stand in for the CFD-DEM data, which plugs
 into the same data format later.
 
+A short summary of what has been done, what it shows and what is proposed
+next is in [PROGRESS.md](PROGRESS.md).
+
 ## What is in the repository
 
 | Tier | Implemented | Not yet |
@@ -174,8 +177,7 @@ density and emissivity are single-source values.
 
 - `ruff` for linting and formatting (line length 100), `pytest` for tests; a
   pre-commit configuration is provided.
-- A GitHub Actions workflow is included but has never run, because the
-  repository has not been pushed.
+- A GitHub Actions workflow runs the linter and the tests on every push.
 
 ## Licence
 
